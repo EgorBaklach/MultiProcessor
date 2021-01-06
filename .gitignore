@@ -1,0 +1,7 @@
+/logs
+/vendor
+/nginx
+/cron/*/.gitignore
+/public/.gitignore
+.idea
+env.json
