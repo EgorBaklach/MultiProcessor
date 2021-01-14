@@ -15,11 +15,13 @@
   },
   "autoload": {
     "psr-4": {
+      "Cron\\": "cron",
       "App\\": "src/App",
       "DB\\": "src/DB",
       "Helpers\\": "src/Helpers",
-      "Proxifier\\": "src/Proxifier",
-      "Cron\\": "cron"
+      "Streams\\": "src/Streams",
+      "Collections\\": "src/Collections",
+      "Proxifier\\": "src/Proxifier"
     }
   },
   "config": {

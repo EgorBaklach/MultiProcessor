@@ -1,29 +1,16 @@
 <?php namespace Cron\Processes;
 
-use App\Config;
-use Cron\Abstracts\ThreadCron;
-use Cron\Traits\Utils;
-use Proxifier\Manager;
+use Cron\Abstracts\Thread;
 
-class MultiProcess extends ThreadCron
+class MultiProcess extends Thread
 {
-    /** @var Manager */
-    private $proxifier;
-
-    use Utils;
-
-    public function prepare()
-    {
-        $this->proxifier = new Manager($this->cache);
-    }
-
     public function query()
     {
-        //$this->attach('unique_hash', $value, $ttl);
+        //$this->attach('test', 'test', self::TTL_10MIN);
     }
 
     public function subquery($param)
     {
-        if(empty($param)) throw new \Exception('Cache is Empty');
+        if(empty($param)) throw new \Exception('Cache is Empty', 501);
     }
 }

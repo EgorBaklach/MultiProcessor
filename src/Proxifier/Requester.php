@@ -2,87 +2,101 @@
 
 class Requester
 {
+    /** @var \CurlMultiHandle|false|resource */
     private $multi;
+
+    /** @var \SplQueue  */
     private $queue;
-    private $options;
 
-    private static $headers = [];
-    private static $proxy = [];
+    private $queries;
+    private $headers;
+    private $proxy;
 
-    public function __construct(array $options = [])
+    public function __construct(array $options = null)
     {
         $this->multi = curl_multi_init();
         $this->queue = new \SplQueue();
-        $this->options = $options ?? [
+        $this->options = [
             CURLOPT_RETURNTRANSFER => 1,
             CURLOPT_HEADER => 0,
-            CURLOPT_HTTPHEADER => self::$headers,
             CURLOPT_CONNECTTIMEOUT => 0,
             CURLOPT_TIMEOUT => 0
         ];
+
+        if(!empty($options))
+        {
+            $this->options += $options;
+        }
     }
 
-    public function headers($headers)
+    public function headers(array $headers)
     {
-        $formatted = [];
+        $this->headers = $headers;
 
-        foreach($headers as $key => $val)
+        return $this;
+    }
+
+    public function queries(array $queries)
+    {
+        $this->queries = $queries;
+
+        return $this;
+    }
+
+    public function proxy(array $proxy)
+    {
+        $this->proxy = $proxy;
+
+        return $this;
+    }
+
+    public function set($url, $data = null, array $options = null)
+    {
+        if(!empty($this->queries))
         {
-            $formatted[] = implode(':', [$key, $val]);
+            $url .= '?'.urldecode(http_build_query($this->queries));
         }
 
-        self::$headers = $formatted;
-
-        return $this;
-    }
-
-    public function proxy($type, $address, $port, $tunnel)
-    {
-        self::$proxy = [
-            'type' => $type,
-            'address' => $address,
-            'port' => $port,
-            'tunnel' => $tunnel
-        ];
-
-        return $this;
-    }
-
-    public function auth($method, $user, $pass)
-    {
-        self::$proxy['auth'] = [
-            'method' => $method,
-            'user' => $user,
-            'pass' => $pass
-        ];
-
-        return $this;
-    }
-
-    public function set($url, array $data, array $options)
-    {
         $init = curl_init($url);
 
         curl_setopt_array($init, $options ?? $this->options);
 
-        if(!empty(self::$proxy['address']))
+        if(!empty($this->headers))
+        {
+            $headers = [];
+
+            foreach($this->headers as $key => $val)
+            {
+                $headers[] = implode(':', [$key, $val]);
+            }
+
+            curl_setopt($init, CURLOPT_HTTPHEADER, $headers);
+        }
+
+        if(!empty($this->proxy['ip']))
         {
             curl_setopt_array($init, [
-                CURLOPT_PROXYTYPE => self::$proxy['type'],
-                CURLOPT_PROXY => self::$proxy['address'],
-                CURLOPT_PROXYPORT => self::$proxy['port'],
-                CURLOPT_HTTPPROXYTUNNEL => self::$proxy['tunnel'],
-                CURLOPT_PROXYAUTH => self::$proxy['auth']['method'],
-                CURLOPT_PROXYUSERPWD => self::$proxy['auth']['user'].':'.self::$proxy['auth']['pass']
+                CURLOPT_PROXYTYPE => CURLPROXY_HTTP,
+                CURLOPT_PROXY => $this->proxy['ip'],
+                CURLOPT_PROXYPORT => $this->proxy['port'],
+                CURLOPT_HTTPPROXYTUNNEL => true
             ]);
+
+            if(!empty($this->proxy['user']))
+            {
+                curl_setopt_array($init, [
+                    CURLOPT_PROXYAUTH => CURLAUTH_BASIC,
+                    CURLOPT_PROXYUSERPWD => $this->proxy['user'].':'.$this->proxy['pass']
+                ]);
+            }
         }
 
         curl_multi_add_handle($this->multi, $init);
 
-        $this->queue->enqueue([$init, $data]);
+        $this->queue->enqueue([$init, [$url, $this->queries, $this->headers, $this->proxy, $data, $options]]);
     }
 
-    public function exec(callable $callback)
+    public function exec(callable $invoke, callable $throwback)
     {
         if(!is_resource($this->multi)) return;
 
@@ -95,17 +109,22 @@ class Requester
 
         while(!$this->queue->isEmpty())
         {
-            list($init, $data) = $this->queue->dequeue();
+            [$init, $data] = $this->queue->dequeue();
 
             curl_multi_remove_handle($this->multi, $init);
 
-            call_user_func_array($callback, [curl_multi_getcontent($init), curl_getinfo($init), $data]);
+            try
+            {
+                $invoke(curl_multi_getcontent($init), curl_getinfo($init), ...$data);
+            }
+            catch (\Throwable $e)
+            {
+                $throwback($e);
+            }
 
             curl_close($init);
 
             usleep(mt_rand(100, 350));
         }
-
-        $this->multi = null;
     }
 }

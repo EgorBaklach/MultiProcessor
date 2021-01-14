@@ -1,27 +1,23 @@
 <?php namespace App;
 
+use Collections\Databases;
 use Phpfastcache\Drivers\Memcache\Config as PDMConfig;
+use Phpfastcache\Helper\CacheConditionalHelper;
 use Phpfastcache\Helper\Psr16Adapter;
-use App\Exceptions\InternalException;
-use Cron\Abstracts\Cron;
-use DB\Collection;
 use Psr\SimpleCache\CacheInterface;
 
-/**
- * Class Config
- * @package App
- */
-class Config
+class Config implements Interfaces\Config
 {
+    private $options;
     private $thread;
     private $cache;
     private $path;
-    private $attr;
     private $hash;
     private $env;
 
     public function __construct()
     {
+        // TODO На Перспективу, ввиду того что кеш нигде не записывается - его надо хранить
         $this->cache = new Psr16Adapter('memcache', new PDMConfig(['host' => '127.0.0.1', 'port' => 11211]));
 
         $arguments = (array) $_SERVER['argv'];
@@ -29,7 +25,7 @@ class Config
         $this->path = array_shift($arguments);
         $this->thread = array_shift($arguments);
 
-        $this->attr = $arguments;
+        $this->options = $arguments;
 
         $this->env = json_decode(file_get_contents('env.json'), true);
     }
@@ -40,20 +36,21 @@ class Config
         {
             foreach($connections as $connection => $access)
             {
-                Collection::$connection($access);
+                Databases::$connection($access);
             }
         }
     }
 
     public function disconnect()
     {
-        $this->cache->delete($this->getHash());
-
         foreach($this->env['DB'] as $connections)
         {
-            foreach(array_keys($connections) as $connection)
+            foreach(array_keys($connections) as $name)
             {
-                Collection::$connection()->abortConnection();
+                if(Databases::available($name))
+                {
+                    Databases::$name()->abortConnection();
+                }
             }
         }
     }
@@ -73,9 +70,14 @@ class Config
         return $this->thread;
     }
 
-    public function getAttr()
+    public function getObjectThread()
     {
-        return $this->attr;
+        return new $this->thread($this);
+    }
+
+    public function getOptions()
+    {
+        return $this->options;
     }
 
     public function getHash()
@@ -84,9 +86,9 @@ class Config
         {
             $hash = ['Cache', stripslashes($this->thread)];
 
-            if(!empty($this->attr))
+            if(!empty($this->options))
             {
-                $hash[] = ucfirst(md5(serialize($this->attr)));
+                $hash[] = ucfirst(md5(serialize($this->options)));
             }
 
             $this->hash = implode('', $hash);
@@ -100,21 +102,9 @@ class Config
         return $this->cache;
     }
 
-    public function getReady()
+    public function getConditionalCache()
     {
-        switch(true)
-        {
-            case !class_exists($this->thread):
-            case $this->cache->get($this->getHash()) === 'Y':
-                return false;
-        }
-
-        return true;
-    }
-
-    public function initProcess(): Cron
-    {
-        return new $this->thread($this);
+        return new CacheConditionalHelper($this->cache->getInternalCacheInstance());
     }
 
     public function getLocalDatabases()
@@ -127,24 +117,22 @@ class Config
         return array_keys($this->env['DB']['remote']);
     }
 
-    public function throwable(\Throwable $e)
+    public function throw(\Throwable $e)
     {
-        if(!$e instanceof InternalException)
-        {
-            $this->disconnect();
-        }
+        $this->disconnect();
+
+        $messages = [];
 
         do
         {
-            $messages[] = implode(PHP_EOL, [
-                implode(' ', [$e->getFile(), 'on line', $e->getLine()]),
-                $this->thread ?: 'Not exist',
+            $messages[] = $e instanceof \Error ? $e->getMessage() : implode(PHP_EOL, [
+                implode(':', [get_class($e), $e->getCode(), $e->getFile(), $e->getLine()]),
                 $e->getMessage(),
                 $e->getTraceAsString()
             ]);
-        }
-        while($e = $e->getPrevious());
 
-        die(implode(PHP_EOL, $messages).PHP_EOL);
+        } while ($e = $e->getPrevious());
+
+        die(implode(PHP_EOL.PHP_EOL, $messages).PHP_EOL);
     }
 }

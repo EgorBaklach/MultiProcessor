@@ -1,4 +1,4 @@
-<?php namespace App\Streams;
+<?php namespace Streams;
 
 class Worker
 {

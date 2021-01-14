@@ -1,6 +1,7 @@
-<?php namespace App\Streams;
+<?php namespace Streams;
 
-use Cron\Abstracts\Cron;
+use Streams\Exceptions\Error;
+use Streams\Exceptions\Output;
 
 class Manager
 {
@@ -22,6 +23,9 @@ class Manager
         self::STDERR => ['pipe', 'w'],
     ];
 
+    /** @var \Throwable */
+    private $exception = null;
+
     private $command;
     private $path;
 
@@ -37,7 +41,7 @@ class Manager
 
         if (false === is_resource($process))
         {
-            throw new \RuntimeException();
+            throw new \RuntimeException('Process is not resource');
         }
 
         stream_set_blocking($pipes[self::STDOUT], self::NON_BLOCKING);
@@ -66,7 +70,7 @@ class Manager
 
         if(false === $changed_num)
         {
-            throw new \RuntimeException();
+            throw new \RuntimeException('Stream is not available');
         }
 
         if(0 === $changed_num)
@@ -90,25 +94,13 @@ class Manager
 
             /** @var Worker $worker */
             $worker = $this->workers[$i];
-            $stdout = stream_get_contents($this->stdouts[$i]);
-            $stderr = stream_get_contents($this->stderrs[$i]);
-            
-            /** @var Cron $thread */
-            $thread = stripslashes($worker->getThread());
+            $stdout = trim(stream_get_contents($this->stdouts[$i]));
+            $stderr = trim(stream_get_contents($this->stderrs[$i]));
 
-            $status = $this->detach($worker);
-
-            if (0 === $status)
+            switch($this->detach($worker))
             {
-                $thread::done($this, $stdout, $stderr);
-            }
-            else if (0 < $status)
-            {
-                $thread::fail($this, $stdout, $stderr, $status);
-            }
-            else
-            {
-                throw new \RuntimeException();
+                case 0: if(!empty($stdout)) $this->exception = new Output($worker->getThread().PHP_EOL.$stdout, 500, $this->exception); break;
+                default: $this->exception = new Error($worker->getThread().PHP_EOL.($stderr ?: 'Thread Has Internal Error'), 500, $this->exception);
             }
         }
     }
@@ -119,7 +111,7 @@ class Manager
 
         if (false === $i)
         {
-            throw new \RuntimeException();
+            throw new \RuntimeException('Worker is not found');
         }
 
         fclose($this->stdins[$i]);
@@ -135,6 +127,16 @@ class Manager
         unset($this->stderrs[$i]);
 
         return $status;
+    }
+
+    public function throwException(): ?\Throwable
+    {
+        if($this->exception)
+        {
+            throw new Error('Internal Error From Threads', 500, $this->exception);
+        }
+
+        return null;
     }
 
     public function getWorkers(): array

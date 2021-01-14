@@ -1,24 +1,32 @@
 <?php namespace Cron\Processes;
 
-use Cron\Abstracts\MultiCron;
+use App\Interfaces\Config;
+use Cron\Abstracts\Multi;
+use Psr\SimpleCache\CacheInterface;
 
-class Cache extends MultiCron
+class Cache extends Multi
 {
-    public function Example($value = false)
+    /** @var CacheInterface */
+    private $cache;
+
+    public function prepare(Config $config)
+    {
+        parent::prepare($config);
+
+        $this->cache = $config->getCache();
+    }
+
+    public function MultiProcess($value = false)
     {
         echo '-----------------------------------'.PHP_EOL;
-        echo $this->call('example_last_id', $value).PHP_EOL;
-
-        if($value !== 'delete') $value = false;
-
-        echo $this->call('CacheCronExample', $value).PHP_EOL;
+        echo $this->call('CacheCronProcessesMultiProcess', $value).PHP_EOL;
         echo '-----------------------------------'.PHP_EOL;
     }
 
     public function list()
     {
         echo '-----------------------------------'.PHP_EOL;
-        echo 'Example - Example process'.PHP_EOL;
+        echo 'MultiProcess - Check cache from Multi Process'.PHP_EOL;
         echo '-----------------------------------'.PHP_EOL;
     }
 

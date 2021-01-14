@@ -1,438 +1,200 @@
 <?php namespace DB;
 
-final class Factory
+use Helpers\Corrector;
+
+abstract class Factory
 {
-    private $table_name;
-    private $columns;
-    private $indexes;
+    protected $table;
 
-    private $error;
-    private $update;
-    private $sql;
+    protected $dependencies;
+    protected $references;
+    protected $conditions;
+    protected $fields;
+    protected $where;
+    protected $order;
+    protected $binds;
 
-    /**
-     * @var Connection $DB
-     */
+    protected $chains;
+    protected $mark;
+
     private $DB;
 
-    /**
-     * Factory constructor.
-     * @param $table_name
-     * @param Connection $DB
-     */
-    public function __construct($table_name, Connection $DB)
+    const mark_of_parameter = ':';
+
+    public function __construct($table, Connection $DB)
     {
+        $this->table = $table;
         $this->DB = $DB;
 
-        $rs = $this->DB->connection()->query("SHOW INDEXES FROM $table_name");
+        $this->abort();
+    }
 
-        while($index = $rs->fetch())
+    public function abort()
+    {
+        $this->dependencies = $this->where = $this->order = $this->binds = [];
+        $this->references = [$this->table];
+        $this->mark = 'a';
+    }
+
+    protected function crypt($field, $node, $multi = false, $spec = false)
+    {
+        if(is_int($field) && is_string($node))
         {
-            if (intval($index["Non_unique"])) continue;
-
-            $this->indexes[$index["Column_name"]] = $index;
+            return $node;
         }
 
-        $rs = $this->DB->connection()->query("DESCRIBE $table_name");
-
-        while($column = $rs->fetch())
+        switch(gettype($node))
         {
-            $field = [];
+            case 'array':
 
-            if($column['Key'] === 'PRI' || !empty($this->indexes[$column['Field']]))
-            {
-                $field['primary'] = true;
-            }
+                $values = [];
 
-            if(!empty($column["Default"]))
-            {
-                $field['default_value'] = $field["Default"];
-            }
-
-            if($column["Null"] === "NO" && !$field['primary'])
-            {
-                $field['required'] = true;
-            }
-
-            if($column['Extra'] === 'auto_increment')
-            {
-                $field['autocomplete'] = true;
-            }
-
-            switch(true)
-            {
-                case preg_match("/^(varchar|char|varbinary|enum|json)/", $column["Type"]):
-
-                    $field["data_type"] = "string";
-
-                    break;
-
-                case preg_match("/^(text|longtext|mediumtext|longblob)/", $column["Type"]):
-
-                    $field["data_type"] = "text";
-
-                    break;
-
-                case preg_match("/^(datetime|timestamp)/", $column["Type"]):
-
-                    $field["data_type"] = "datetime";
-
-                    break;
-
-                case preg_match("/^(date)/", $column["Type"]):
-
-                    $field["data_type"] = "date";
-
-                    break;
-
-                case preg_match("/^(int|smallint|bigint|tinyint)/", $column["Type"]):
-
-                    $field["data_type"] = "integer";
-
-                    break;
-
-                case preg_match("/^(float|double|decimal)/", $column["Type"]):
-
-                    $field["data_type"] = "float";
-
-                    break;
-
-                default:
-
-                    $field["data_type"] = "UNKNOWN";
-            }
-
-            if($field['data_type'] === 'string')
-            {
-                preg_match("/\((\d+)\)$/", $column["Type"], $match);
-
-                if(!empty($match[1]) && $match[1] == 1 && in_array($column["Default"], ['N', 'Y']))
+                foreach($node as $value)
                 {
-                    $field["data_type"] = "boolean";
-                    $field["values"] = ['N', 'Y'];
+                    $values[] = $this->crypt($field, $value, true);
                 }
-            }
 
-            $this->columns[$column['Field']] = $field;
+                $value = Corrector::RoundFraming(implode(',', $values));
+
+                break;
+            default:
+
+                $value = self::mark_of_parameter.$this->mark++;
+                $this->convert($value, $node);
         }
 
-        $this->table_name = $table_name;
+        if(!$multi)
+        {
+            $value = $field.$spec.$value;
+        }
+
+        return $value;
     }
 
-    public function getColumns()
+    protected function convert($name, $value)
     {
-        return $this->columns;
+        switch(gettype($value))
+        {
+            case 'NULL': return $this->bind($name, null, \PDO::PARAM_NULL);
+            case 'integer': return $this->bind($name, $value, \PDO::PARAM_INT);
+        }
+
+        return $this->bind($name, $value, \PDO::PARAM_STR);
     }
 
-    public function getTableName()
+    public function conditions(array $fields, $multi = false, $spec = false)
     {
-        return $this->table_name;
+        $this->conditions = [];
+
+        foreach($fields as $field => $value)
+        {
+            $this->conditions[] = $this->crypt($field, $value, $multi, $spec);
+        }
+
+        return implode(',', $this->conditions);
     }
 
-    /**
-     * @param array $fields
-     * @param bool $multi
-     * @param bool $and
-     * @param bool $special_chars
-     * @return string
-     */
-    public function convertToDB($fields, $multi = false, $and = false, $special_chars = false)
+    public function bind($name, ...$binds)
     {
-        $rows = [];
+        if(array_key_exists($name, $this->binds))
+        {
+            throw new \LogicException("Duplicate bind parameters. Argument: $name", 500);
+        }
 
-        foreach($fields as $field => &$value)
+        $this->binds[$name] = $binds;
+
+        return $this;
+    }
+
+    public function dependence($table, $type, array $reference = [])
+    {
+        $references = [];
+
+        foreach($reference as $p => $c)
+        {
+            $references[] = implode('', [$p, $c]);
+        }
+
+        $this->dependencies[$table] = implode(' ', [$type, 'JOIN', $table, 'ON', implode(' AND ', $references)]);
+
+        $this->references[] = $table;
+
+        return $this;
+    }
+
+    public function where(...$rules)
+    {
+        $where = [];
+
+        foreach($rules as $conditions)
+        {
+            if(!$conditions) continue;
+
+            $this->conditions = [];
+
+            foreach($conditions as $field => $value)
+            {
+                $this->conditions[] = $this->crypt($field, $value);
+            }
+
+            $where[] = implode(' AND ', $this->conditions);
+        }
+
+        if(!empty($where))
+        {
+            $this->where[] = Corrector::RoundFraming(implode(' OR ', $where));
+        }
+
+        return $this;
+    }
+
+    public function limit(int $limit)
+    {
+        $this->limit = $limit;
+
+        return $this;
+    }
+
+    public function order(array $order)
+    {
+        foreach($order as $field => $condition)
         {
             if(is_int($field))
             {
-                $rows[] = str_replace('this', $this->table_name, $value);
-                continue;
+                $field = $condition;
+                $condition = 'ASC';
             }
 
-            switch(gettype($value))
-            {
-                case 'array':
-
-                    $value = "('".implode("', '", $value)."')";
-
-                    break;
-                case 'NULL':
-
-                    $value = 'NULL';
-
-                    break;
-                default:
-
-                    $field_original = preg_replace('/[^\w_.]+/i', '', $field);
-                    $field_original = str_replace('this.', '', $field_original);
-
-                    switch($this->columns[$field_original]['data_type'])
-                    {
-                        case 'string':
-                        case 'text':
-                        case 'date':
-                        case 'datetime':
-                        case 'boolean':
-                            $value = $this->DB->connection()->quote($value);
-                            break;
-                    }
-            }
-
-            $field = str_replace('this', $this->table_name, $field);
-
-            $rows[] = $field.($special_chars ? '' : '=').$value;
-        }
-
-        if($multi)
-        {
-            return '('.implode(',', $fields).')';
-        }
-
-        return implode($and ? ' AND ' : ', ',  $rows);
-    }
-
-    /**
-     * @example (
-    ['*'],
-    ['this.id=' => 123],
-    ['this.id' => 'ASC'],
-    ['reference' => [
-        'table_name' => 'b_instamall_product_files',
-        'type' => 'LEFT',
-        'reference' => [
-            'ref.id=' => 'this.picture_id'
-        ]
-    ]],
-    100
-    )
-     *
-     * @param $fields
-     * @param array $where
-     * @param array $order
-     * @param array $join
-     * @param mixed $limit
-     * @return $this
-     */
-    public function select($fields, $where = [], $order = [], $join = [], $limit = false)
-    {
-        $this->sql = false;
-
-        try
-        {
-            foreach($join as $name => &$data)
-            {
-                foreach($data['reference'] as $p => &$c)
-                {
-                    foreach(['value.' => '', 'this' => $this->table_name] as $f => $r)
-                    {
-                        if(strpos($c, $f) === 0)
-                        {
-                            $c = preg_replace("/$f/", $r, $c, 1);
-                            break;
-                        }
-                    }
-
-                    $c = implode('', [str_replace('ref', $name, $p), $c]);
-                }
-
-                $data = implode(' ', [
-                    $data['type'],
-                    'JOIN',
-                    $data['table_name'],
-                    $name,
-                    'ON',
-                    implode(' AND ', $data['reference'])
-                ]);
-            }
-
-            if(!empty($join))
-            {
-                foreach($fields as &$field)
-                {
-                    $field = str_replace('this', $this->table_name, $field);
-                }
-            }
-
-            $sql = [
-                'SELECT',
-                implode(', ', $fields),
-                'FROM',
-                $this->table_name
-            ];
-
-            if(!empty($join))
-            {
-                $sql[] = implode(' ', $join);
-            }
-
-            if(!empty($where))
-            {
-                $sql[] = implode(' ', [
-                    'WHERE',
-                    $this->convertToDB($where, false, true, true)
-                ]);
-            }
-
-            if(!empty($order))
-            {
-                foreach($order as $name => &$field)
-                {
-                    $field = implode(' ', [str_replace('this', $this->table_name, $name), $field]);
-                }
-
-                $sql[] = "ORDER BY ".implode(', ', $order);
-            }
-
-            if(!empty($limit))
-            {
-                $sql[] = "LIMIT $limit";
-            }
-
-            $this->sql = implode(' ', $sql);
-        }
-        catch(\PDOException $e)
-        {
-            $this->error = $e->getMessage();
+            $this->order[] = implode(' ', [$field, $condition]);
         }
 
         return $this;
     }
 
-    /**
-     * @param $update
-     * @param array $where
-     * @param array $order
-     * @param array $join
-     * @param mixed $limit
-     * @return $this
-     */
-    public function update($update, $where = [], $order = [], $join = [], $limit = false)
+    protected function setAdditional()
     {
-        $this->sql = false;
-
-        try
+        if(!empty($this->where))
         {
-            foreach($join as $name => &$data)
-            {
-                foreach($data['reference'] as $p => &$c)
-                {
-                    $c = implode('', [
-                        str_replace('ref', $name, $p),
-                        str_replace('this', $this->table_name, $c)
-                    ]);
-                }
-
-                $data = implode(' ', [
-                    $data['type'],
-                    'JOIN',
-                    $data['table_name'],
-                    $name,
-                    'ON',
-                    implode(' AND ', $data['reference'])
-                ]);
-            }
-
-            if(!empty($join))
-            {
-                foreach($update as &$field)
-                {
-                    $field = str_replace('this', $this->table_name, $field);
-                }
-            }
-
-            $sql = [
-                'UPDATE',
-                $this->table_name
-            ];
-
-            if(!empty($join))
-            {
-                $sql[] = implode(' ', $join);
-            }
-
-            $sql[] = implode(' ', [
-                'SET',
-                $this->convertToDB($update)
-            ]);
-
-            if(!empty($where))
-            {
-                $sql = array_merge($sql, [
-                    'WHERE',
-                    $this->convertToDB($where, false, true, true)
-                ]);
-            }
-
-            if(!empty($order))
-            {
-                foreach($order as $name => &$field)
-                {
-                    $field = implode(' ', [str_replace('this', $this->table_name, $name), $field]);
-                }
-
-                $sql[] = "ORDER BY ".implode(', ', $order);
-            }
-
-            if(!empty($limit))
-            {
-                $sql[] = "LIMIT $limit";
-            }
-
-            $this->sql = implode(' ', $sql);
-        }
-        catch(\PDOException $e)
-        {
-            $this->error = $e->getMessage();
+            $this->chains[] = 'WHERE';
+            $this->chains[] = implode(' AND ', $this->where);
         }
 
-        return $this;
+        if(!empty($this->order))
+        {
+            $this->chains[] = 'ORDER BY';
+            $this->chains[] = implode(', ', $this->order);
+        }
+
+        if(!empty($this->limit))
+        {
+            $this->chains[] = 'LIMIT';
+            $this->chains[] = $this->limit;
+        }
     }
 
-    /**
-     * @param $insert
-     * @param array $updates
-     * @param bool $multi
-     * @return $this
-     */
-    public function merge($insert, $updates = [])
-    {
-        if(empty($updates))
-        {
-            $updates = array_keys($this->columns);
-        }
-
-        $this->sql = false;
-        $this->update = $updates;
-
-        try
-        {
-            $sql = [
-                'INSERT INTO',
-                $this->table_name,
-                "(".implode(', ', $updates).")",
-                'VALUES',
-                implode(', ', $insert),
-            ];
-
-            $this->sql = implode(' ', $sql);
-
-            $this->onDuplicate(true);
-        }
-        catch(\PDOException $e)
-        {
-            $this->error = $e->getMessage();
-        }
-
-        return $this;
-    }
-
-    /**
-     *
-     * @param mixed $param
-     * @return $this
-     */
     public function onDuplicate($param = false)
     {
-        if(empty($this->sql) || empty($this->update))
+        if(empty($this->chains) || empty($this->fields))
         {
             return $this;
         }
@@ -444,149 +206,57 @@ final class Factory
             case 'array': $fields = $param; break;
             case 'string': $fields = [$param => $param]; break;
             default:
-                foreach($this->update as $field)
+                foreach($this->fields as $field)
                 {
                     $fields[$field] = $param ? "values($field)" : $field;
                 }
                 break;
         }
 
-        $this->sql .= implode(' ', ['', 'ON DUPLICATE KEY UPDATE', urldecode(http_build_query($fields, false, ', '))]);
+        $this->chains[] = 'ON DUPLICATE KEY UPDATE';
+        $this->chains[] = urldecode(http_build_query($fields, false, ', '));
 
-        $this->update = null;
+        $this->fields = null;
 
         return $this;
     }
 
-    /**
-     * @param $insert
-     * @param array $fields
-     * @param bool $multi
-     * @return $this
-     */
-    public function insert($insert, $fields = [], $multi = false)
+    private function unifier()
     {
-        if(empty($fields))
+        return preg_replace_callback('/(\d):/', function($matches)
         {
-            $fields = array_keys($this->columns);
-            unset($fields[0]);
-        }
+            if(!array_key_exists($matches[1], $this->references))
+            {
+                throw new \ValueError("Reference {$matches[1]}: does not exist", 501);
+            }
 
-        $this->sql = false;
-        $this->update = $fields;
+            return $this->references[$matches[1]].'.';
 
-        try
-        {
-            $insert = $multi ? implode(',', $insert) : $this->convertToDB($insert, true);
-
-            $fields = implode(',', $fields);
-
-            $this->sql = implode(' ', [
-                'INSERT INTO',
-                $this->table_name,
-                "($fields)",
-                'VALUES',
-                $insert
-            ]);
-        }
-        catch(\PDOException $e)
-        {
-            $this->error = $e->getMessage();
-        }
-
-        return $this;
+        }, implode(' ', $this->chains));
     }
 
     /**
-     * @param $where
-     * @param array $fields
-     * @param array $join
-     * @return $this
-     */
-    public function delete($where, $fields = [], $join = [])
-    {
-        $this->sql = false;
-
-        try
-        {
-            foreach($join as $name => &$data)
-            {
-                foreach($data['reference'] as $p => &$c)
-                {
-                    $c = implode('', [
-                        str_replace('ref', $name, $p),
-                        str_replace('this', $this->table_name, $c)
-                    ]);
-                }
-
-                $data = implode(' ', [
-                    $data['type'],
-                    'JOIN',
-                    $data['table_name'],
-                    $name,
-                    'ON',
-                    implode(' AND ', $data['reference'])
-                ]);
-            }
-
-            if(!empty($join))
-            {
-                foreach($fields as &$field)
-                {
-                    $field = str_replace('this', $this->table_name, $field);
-                }
-            }
-
-            $sql = [
-                'DELETE',
-                implode(', ', $fields),
-                'FROM',
-                $this->table_name
-            ];
-
-            if(!empty($join))
-            {
-                $sql[] = implode(' ', $join);
-            }
-
-            $sql[] = implode(' ', [
-                'WHERE',
-                $this->convertToDB($where, false, true, true)
-            ]);
-
-            $this->sql = implode(' ', $sql);
-        }
-        catch(\PDOException $e)
-        {
-            $this->error = $e->getMessage();
-        }
-
-        return $this;
-    }
-
-    /**
-     * @return \PDOStatement
-     * Set validating PDO method for sql queries, if it should be
+     * @return false|\PDOStatement
      */
     public function exec()
     {
-        return $this->DB->connection()->query($this->sql);
+        $stmt = $this->DB->connection()->prepare($this->unifier());
+
+        foreach($this->binds as $value => $bind)
+        {
+            $stmt->bindValue($value, ...$bind);
+        }
+
+        $stmt->execute();
+
+        $this->abort();
+
+        return $stmt;
     }
 
-    /**
-     * @return mixed
-     */
     public function getSql()
     {
-        return $this->sql;
-    }
-
-    /**
-     * @return mixed
-     */
-    public function getError()
-    {
-        return $this->error;
+        return $this->unifier();
     }
 
     public function disconnect()

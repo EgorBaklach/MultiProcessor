@@ -1,14 +1,19 @@
 <?php namespace Cron\Processes;
 
-use App\Config;
-use Cron\Abstracts\MultiCron;
-use DB\Collection;
-use DB\Connection;
+use App\Interfaces\Config;
+use Collections\Databases;
+use Cron\Abstracts\Multi;
 
-class Handlers extends MultiCron
+class Handlers extends Multi
 {
+    private $cache;
+    private $DB;
+
     public function prepare(Config $config)
     {
+        parent::prepare($config);
+
+        $this->cache = $config->getCache();
         $this->DB = [
             'local' => $config->getLocalDatabases(),
             'remotes' => $config->getRemoteDatabases()
@@ -17,15 +22,17 @@ class Handlers extends MultiCron
 
     public function checkConnections()
     {
+        if(empty($this->DB['remotes']))
+        {
+            throw new \Exception('Remote connections are empty', 501);
+        }
+
         echo '-----------------------------------'.PHP_EOL;
         foreach($this->DB['remotes'] as $slave)
         {
-            /** @var Connection $DBSalve */
-            $DBSalve = Collection::$slave();
+            echo implode(' - ', ['Try', $slave, '']);
 
-            echo implode(' - ', ['Checkin', $slave, '']);
-
-            $DBSalve->connection();
+            Databases::$slave()->connection();
 
             echo 'ALREADY!'.PHP_EOL;
         }
@@ -36,7 +43,7 @@ class Handlers extends MultiCron
     {
         echo '-----------------------------------'.PHP_EOL;
         echo 'checkConnections - Check remote connections'.PHP_EOL;
-        echo 'test - Test method'.PHP_EOL;
+        echo 'test - Test method. Process go to sleep during 30 seconds'.PHP_EOL;
         echo 'logon - Turn On Logger'.PHP_EOL;
         echo 'logoff - Switch Off Logger'.PHP_EOL;
         echo '-----------------------------------'.PHP_EOL;

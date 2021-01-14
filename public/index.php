@@ -3,40 +3,29 @@
 chdir(dirname(__DIR__));
 require 'vendor/autoload.php';
 
-$config = new App\Config();
 $runner = new App\Runner();
 
 try
 {
-    if(!$config->getReady())
-    {
-        throw new App\Exceptions\InternalException('Process is not ready');
-    }
+    $runner->open();
 
-    $config->connect();
-
-    $thread = $config->initProcess();
+    $thread = $runner->init();
 
     $runner->run($thread);
 
-    if(!empty($runner->getMethod()))
+    if(!empty($runner->method()))
     {
-        if(!method_exists($thread, $runner->getMethod()))
+        $result = $thread->{$runner->method()}(...$runner->arguments());
+
+        if(!empty($runner->SubMethod()))
         {
-            throw new \Exception("Method {$runner->getMethod()}: does not exist in Process");
+            $thread->{$runner->SubMethod()}($result);
         }
-
-        $result = call_user_func_array([$thread, $runner->getMethod()], $runner->getAttr());
     }
 
-    if(!empty($runner->getSubMethod()))
-    {
-        call_user_func([$thread, $runner->getSubMethod()], $result);
-    }
-
-    $config->disconnect();
+    $runner->close()->disconnect();
 }
 catch(Throwable $e)
 {
-    $config->throwable($e);
+    $runner->throw($e);
 }

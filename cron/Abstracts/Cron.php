@@ -1,20 +1,9 @@
 <?namespace Cron\Abstracts;
 
-use App\Streams\Manager;
-use App\Config;
-use Helpers\Log;
+use App\Interfaces\Config;
 
 abstract class Cron
 {
-    /** @var Manager */
-    protected $manager;
-
-    /** @var \Psr\SimpleCache\CacheInterface */
-    protected $cache;
-
-    /** @var array */
-    protected $attr;
-
     const TTL_FOREVER = 0; // навсегда
     const TTL_10MIN = 600; // 10 минут
     const TTL_HOUR = 3600; // 1 час
@@ -25,33 +14,11 @@ abstract class Cron
 
     public function __construct(Config $config)
     {
-        $this->manager = new Manager($config->getCommand(), $config->getPath());
-
-        $this->cache = $config->getCache();
-        $this->attr = $config->getAttr();
-
         if(method_exists($this, 'prepare'))
         {
             $this->prepare($config);
         }
-
-        $this->cache->set($config->getHash(), 'Y', self::TTL_2MONTHS);
     }
 
     abstract public function exec();
-
-    public function getAttr()
-    {
-        return $this->attr;
-    }
-
-    public static function done($manager, $stdout, $stderr)
-    {
-        if(!empty($stdout)) Log::add2log($stdout);
-    }
-
-    public static function fail($manager, $stdout, $stderr, $status)
-    {
-        if(!empty($stderr)) Log::add2log($stderr);
-    }
 }

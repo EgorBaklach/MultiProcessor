@@ -4,7 +4,6 @@ final class Log
 {
     private static $path = 'logs';
     private static $file = false;
-    private static $init = false;
 
     const size = 34000;
 
