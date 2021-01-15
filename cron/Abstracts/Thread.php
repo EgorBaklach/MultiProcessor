@@ -1,6 +1,7 @@
 <?php namespace Cron\Abstracts;
 
 use App\Interfaces\Config;
+use Phpfastcache\Helper\CacheConditionalHelper;
 use Psr\SimpleCache\CacheInterface;
 use Streams\Manager as StreamManager;
 use Streams\Worker;
@@ -13,11 +14,15 @@ abstract class Thread extends Multi
     /** @var CacheInterface */
     protected $cache;
 
+    /** @var CacheConditionalHelper */
+    protected $cacheConditinal;
+
     protected function prepare(Config $config)
     {
         parent::prepare($config);
 
         $this->stream = new StreamManager($config->getCommand(), $config->getPath());
+        $this->cacheConditinal = $config->getConditionalCache();
         $this->cache = $config->getCache();
     }
 

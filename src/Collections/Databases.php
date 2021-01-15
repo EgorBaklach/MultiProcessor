@@ -6,6 +6,8 @@ use DB\Queries;
 /**
  * Class Databases
  * @package Collections
+ * @property Queries $proxies;
+ * @property Queries $agents;
  */
 class Databases extends Collection
 {

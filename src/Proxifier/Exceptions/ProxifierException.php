@@ -14,7 +14,7 @@ abstract class ProxifierException extends \LogicException
 {
     private $attr;
 
-    public function __construct($message, $attr = false)
+    public function __construct($message, array $attributes = null)
     {
         parent::__construct($message, 500);
 
@@ -25,7 +25,7 @@ abstract class ProxifierException extends \LogicException
             $this->attr['proxy'],
             $this->attr['data'],
             $this->attr['options']
-        ] = $attr;
+        ] = $attributes;
     }
 
     public function getAttr()

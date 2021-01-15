@@ -6,6 +6,8 @@ use DB\Handlers\Current;
 use DB\Handlers\DBHandler;
 use Phpfastcache\Helper\CacheConditionalHelper;
 use Proxifier\Exceptions\Instagram as InstagramException;
+use Proxifier\Exceptions\NotFound as NotFoundException;
+use Proxifier\Exceptions\Success as SuccessException;
 use Proxifier\Exceptions\ProxifierException;
 use Proxifier\Handlers\ProxifierHandler;
 use Psr\SimpleCache\CacheInterface;
@@ -153,15 +155,20 @@ class Manager
 
             if(!empty($e->proxy))
             {
+                $update = ['processes=processes-:process'];
+
+                switch(true)
+                {
+                    case $e instanceof InstagramException: $update[] = 'blocked=blocked+:block'; break;
+                    case $e instanceof NotFoundException: $update[] = 'inactives=inactives+:inactive'; break;
+                }
+
                 $this->DB->proxies
                     ->where(['id=' => $e->proxy['id']])
-                    ->bind(':p', 1, \PDO::PARAM_INT)
-                    ->bind(':i', 1, \PDO::PARAM_INT)
-                    ->bind(':b', 1, \PDO::PARAM_INT)
-                    ->update([
-                        'processes=processes-:p',
-                        $e instanceof InstagramException ? 'inactives=inactives+:i' : 'blocked=blocked+:b'
-                    ])
+                    ->bind(':process', 1, \PDO::PARAM_INT)
+                    ->bind(':inactive', 1, \PDO::PARAM_INT)
+                    ->bind(':block', 1, \PDO::PARAM_INT)
+                    ->update($update)
                     ->exec();
             }
         });

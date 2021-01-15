@@ -1,9 +1,8 @@
 <?php namespace Proxifier\Handlers;
 
-use Collections\Databases;
-use Helpers\Shower;
 use Proxifier\Exceptions\NotFound;
 use Proxifier\Exceptions\Instagram as InstagramException;
+use Proxifier\Exceptions\Success;
 
 class Instagram extends ProxifierHandler
 {
@@ -13,7 +12,7 @@ class Instagram extends ProxifierHandler
 
         if($info['http_code'] >= 400)
         {
-            throw new NotFound('Page is not found', $arguments);
+            throw new NotFound($arguments);
         }
 
         $content = json_decode($content, true, 512, JSON_BIGINT_AS_STRING);
@@ -23,19 +22,11 @@ class Instagram extends ProxifierHandler
             case $info['http_code'] !== 200:
             case $this->getContentType($info['content_type']) !== self::json_type:
             case !is_array($content):
-                throw new InstagramException('Request dont caught. Try again.', $arguments);
-        }
-
-        if(!empty($proxy))
-        {
-            Databases::tags()->proxies
-                ->where(['id=' => $proxy['id']])
-                ->bind(':p', 1, \PDO::PARAM_INT)
-                ->bind(':r', 1, \PDO::PARAM_INT)
-                ->update(['processes=processes-:p', 'requests=requests+:r'])
-                ->exec();
+                throw new InstagramException($arguments);
         }
 
         ($this->callback)($content, $data);
+
+        throw new Success($arguments);
     }
 }
