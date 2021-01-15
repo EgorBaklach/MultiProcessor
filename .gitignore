@@ -1,3 +1,4 @@
+/backup
 /logs
 /vendor
 /nginx
@@ -5,3 +6,4 @@
 /public/.gitignore
 .idea
 env.json
+composer.lock

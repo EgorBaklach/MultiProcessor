@@ -4,9 +4,9 @@ abstract class Collection
 {
     protected static $instances = [];
 
-    protected static function call($name, \Closure $closure)
+    protected static function call(\Closure $closure)
     {
-        self::$instances[$name] = $closure();
+        return $closure();
     }
 
     protected static function get($name)
@@ -18,7 +18,7 @@ abstract class Collection
 
         if(self::$instances[$name] instanceof \Closure)
         {
-            static::call($name, self::$instances[$name]);
+            self::$instances[$name] = static::call(self::$instances[$name]);
         }
 
         return self::$instances[$name];

@@ -1,6 +1,6 @@
 <?php namespace Proxifier\Handlers;
 
-use Collections\Tables;
+use Collections\Databases;
 use Helpers\Shower;
 use Proxifier\Exceptions\NotFound;
 use Proxifier\Exceptions\Instagram as InstagramException;
@@ -9,8 +9,6 @@ class Instagram extends ProxifierHandler
 {
     public function __invoke($content, $info, ...$arguments)
     {
-        echo Shower::printPre($info);
-
         [$url, $queries, $headers, $proxy, $data, $options] = $arguments;
 
         if($info['http_code'] >= 400)
@@ -30,7 +28,7 @@ class Instagram extends ProxifierHandler
 
         if(!empty($proxy))
         {
-            Tables::proxies()
+            Databases::tags()->proxies
                 ->where(['id=' => $proxy['id']])
                 ->bind(':p', 1, \PDO::PARAM_INT)
                 ->bind(':r', 1, \PDO::PARAM_INT)

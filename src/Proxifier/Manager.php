@@ -1,6 +1,6 @@
 <?php namespace Proxifier;
 
-use Collections\Tables;
+use Collections\Databases;
 use DB\Handlers\Agents;
 use DB\Handlers\Current;
 use DB\Handlers\DBHandler;
@@ -30,6 +30,9 @@ class Manager
     /** @var \SplQueue */
     private $queue;
 
+    /** @var Databases */
+    private $DB;
+
     private $data = [
         'proxies' => [
             ['id', 'ip', 'port', 'user', 'pass'],
@@ -40,10 +43,11 @@ class Manager
         'agents' => [['*'], null, ['id'], Agents::class]
     ];
 
-    public function __construct(...$config)
+    public function __construct(Databases $DB, CacheInterface $cache, CacheConditionalHelper $conditinalCache, array $options)
     {
-        [$this->cache, $this->CacheConditional, $options] = $config;
-
+        $this->DB = $DB;
+        $this->cache = $cache;
+        $this->CacheConditional = $conditinalCache;
         $this->requester = new Requester($options);
         $this->queue = new \SplQueue();
 
@@ -53,7 +57,7 @@ class Manager
             {
                 [$select, $where, $orders, $handler] = $queries;
 
-                return new $handler(Tables::$table()->where($where ?? NULL)->order($orders)->select($select)->exec());
+                return new $handler($this->DB->{$table}->where($where ?? NULL)->order($orders)->select($select)->exec());
             });
         }
     }
@@ -123,7 +127,7 @@ class Manager
 
             if(!empty($proxy))
             {
-                Tables::proxies()
+                $this->DB->proxies
                     ->where(['id=' => $proxy['id']])
                     ->bind(':p', 1, \PDO::PARAM_INT)
                     ->update(['processes=processes+:p'])
@@ -149,7 +153,7 @@ class Manager
 
             if(!empty($e->proxy))
             {
-                Tables::proxies()
+                $this->DB->proxies
                     ->where(['id=' => $e->proxy['id']])
                     ->bind(':p', 1, \PDO::PARAM_INT)
                     ->bind(':i', 1, \PDO::PARAM_INT)

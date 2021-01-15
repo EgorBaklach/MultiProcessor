@@ -3,6 +3,7 @@
 class Connection
 {
     private $type = 'mysql';
+    private $name;
     private $query;
     private $user;
     private $pass;
@@ -15,6 +16,7 @@ class Connection
         $this->charset = $access['charset'];
         $this->user = $access['user'];
         $this->pass = $access['pass'];
+        $this->name = $access['db'];
         $this->query = http_build_query([
             'host' => $access['host'],
             'dbname' => $access['db'],
@@ -41,6 +43,11 @@ class Connection
         }
 
         return $this->connection;
+    }
+
+    public function name()
+    {
+        return $this->name;
     }
 
     public function abortConnection()

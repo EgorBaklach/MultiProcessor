@@ -1,6 +1,7 @@
 <?php namespace Cron\Abstracts;
 
 use App\Interfaces\Config;
+use Psr\SimpleCache\CacheInterface;
 use Streams\Manager as StreamManager;
 use Streams\Worker;
 
@@ -8,6 +9,8 @@ abstract class Thread extends Multi
 {
     /** @var StreamManager */
     protected $stream;
+
+    /** @var CacheInterface */
     protected $cache;
 
     protected function prepare(Config $config)
@@ -21,9 +24,9 @@ abstract class Thread extends Multi
     abstract public function query();
     abstract public function subquery($attr);
 
-    protected function attach($hash, $attr, $ttl)
+    protected function attach($hash, $attr, $ttl = null)
     {
-        $this->cache->set($hash, $attr, $ttl);
+        $this->cache->set($hash, $attr, $ttl ?? self::TTL_FOREVER);
         $this->stream->attach(new Worker(static::class, $hash));
     }
 
