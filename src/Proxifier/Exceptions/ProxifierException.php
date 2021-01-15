@@ -49,4 +49,9 @@ abstract class ProxifierException extends \LogicException
 
         return $this->attr[$name] ?: null;
     }
+
+    public function __isset($name)
+    {
+        return isset($this->attr[$name]);
+    }
 }

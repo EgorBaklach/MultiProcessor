@@ -23,14 +23,24 @@ class Cache extends Multi
         echo '-----------------------------------'.PHP_EOL;
     }
 
+    public function Handlers($action)
+    {
+        $hash = implode('', ['CacheCronProcessesHandlers', ucfirst(md5(serialize([$action])))]);
+
+        echo '-----------------------------------'.PHP_EOL;
+        echo $this->call($hash, 'delete').PHP_EOL;
+        echo '-----------------------------------'.PHP_EOL;
+    }
+
     public function list()
     {
         echo '-----------------------------------'.PHP_EOL;
         echo 'MultiProcess - Check cache from Multi Process'.PHP_EOL;
+        echo 'Handlers - Clear cache from Handlers'.PHP_EOL;
         echo '-----------------------------------'.PHP_EOL;
     }
 
-    public function call($hash, $value = false)
+    private function call($hash, $value = false)
     {
         switch(true)
         {

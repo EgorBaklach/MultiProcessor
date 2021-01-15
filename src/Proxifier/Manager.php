@@ -45,7 +45,7 @@ class Manager
         'agents' => [['*'], null, ['id'], Agents::class]
     ];
 
-    public function __construct(Databases $DB, CacheInterface $cache, CacheConditionalHelper $conditinalCache, array $options)
+    public function __construct(Databases $DB, CacheInterface $cache, CacheConditionalHelper $conditinalCache, array $options = null)
     {
         $this->DB = $DB;
         $this->cache = $cache;
@@ -155,21 +155,26 @@ class Manager
 
             if(!empty($e->proxy))
             {
+                $query = $this->DB->proxies->where(['id=' => $e->proxy['id']])->bind(':process', 1, \PDO::PARAM_INT);
                 $update = ['processes=processes-:process'];
 
                 switch(true)
                 {
-                    case $e instanceof InstagramException: $update[] = 'blocked=blocked+:block'; break;
-                    case $e instanceof NotFoundException: $update[] = 'inactives=inactives+:inactive'; break;
+                    case $e instanceof InstagramException:
+                        $query->bind(':block', 1, \PDO::PARAM_INT);
+                        $update[] = 'blocked=blocked+:block';
+                        break;
+                    case $e instanceof NotFoundException:
+                        $query->bind(':inactive', 1, \PDO::PARAM_INT);
+                        $update[] = 'inactives=inactives+:inactive';
+                        break;
+                    case $e instanceof SuccessException:
+                        $query->bind(':request', 1, \PDO::PARAM_INT);
+                        $update[] = 'requests=requests+:request';
+                        break;
                 }
 
-                $this->DB->proxies
-                    ->where(['id=' => $e->proxy['id']])
-                    ->bind(':process', 1, \PDO::PARAM_INT)
-                    ->bind(':inactive', 1, \PDO::PARAM_INT)
-                    ->bind(':block', 1, \PDO::PARAM_INT)
-                    ->update($update)
-                    ->exec();
+                $query->update($update)->exec();
             }
         });
 

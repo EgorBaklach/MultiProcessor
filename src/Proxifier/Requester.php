@@ -25,7 +25,7 @@ class Requester
 
         if(!empty($options))
         {
-            $this->options += $options;
+            $this->options = $options + $this->options;
         }
     }
 
