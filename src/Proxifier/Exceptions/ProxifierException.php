@@ -30,14 +30,7 @@ abstract class ProxifierException extends \LogicException
 
     public function getAttr()
     {
-        return [
-            $this->url,
-            null,
-            $this->headers ?: null,
-            $this->proxy ?: null,
-            $this->data,
-            $this->options
-        ];
+        return [$this->url, null, null, null, $this->data, $this->options];
     }
 
     public function __get($name)

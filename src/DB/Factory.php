@@ -235,9 +235,7 @@ abstract class Factory
         }, implode(' ', $this->chains));
     }
 
-    /**
-     * @return false|\PDOStatement
-     */
+    /** @return false|\PDOStatement */
     public function exec()
     {
         $stmt = $this->DB->connection()->prepare($this->unifier());

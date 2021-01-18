@@ -6,9 +6,9 @@ abstract class DBHandler implements \ArrayAccess
 
     abstract public function __construct(\PDOStatement $statement);
 
-    public function count($name = false): int
+    public function count(): int
     {
-        return count($this->result[$name] ?: $this->result);
+        return count($this->result);
     }
 
     public function offsetExists($offset)

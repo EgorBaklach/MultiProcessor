@@ -4,6 +4,7 @@ use Collections\Databases;
 use DB\Handlers\Agents;
 use DB\Handlers\Current;
 use DB\Handlers\DBHandler;
+use Helpers\Date;
 use Phpfastcache\Helper\CacheConditionalHelper;
 use Proxifier\Exceptions\Instagram as InstagramException;
 use Proxifier\Exceptions\NotFound as NotFoundException;
@@ -92,7 +93,7 @@ class Manager
 
     public function getAgent($type = 'desktop')
     {
-        $n = mt_rand(0, $this->agents->count($type ?: 'mobile') - 1);
+        $n = mt_rand(0, count($this->agents[$type ?: 'mobile']) - 1);
 
         return $this->agents[$type ?: 'mobile'][$n]['name'];
     }
@@ -156,7 +157,7 @@ class Manager
             if(!empty($e->proxy))
             {
                 $query = $this->DB->proxies->where(['id=' => $e->proxy['id']])->bind(':process', 1, \PDO::PARAM_INT);
-                $update = ['processes=processes-:process'];
+                $update = ['processes=processes-:process', 'last_request' => Date::correct('Y-m-d H:i:s')];
 
                 switch(true)
                 {

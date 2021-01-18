@@ -59,7 +59,7 @@ class Requester
 
         $init = curl_init($url);
 
-        curl_setopt_array($init, $options ?? $this->options);
+        curl_setopt_array($init, $options + $this->options);
 
         if(!empty($this->headers))
         {
@@ -103,7 +103,7 @@ class Requester
         do
         {
             curl_multi_exec($this->multi, $running);
-            curl_multi_select($this->multi);
+            curl_multi_select($this->multi, 60);
         }
         while($running > 0);
 

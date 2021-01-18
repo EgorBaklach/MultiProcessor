@@ -1,6 +1,6 @@
 <?php namespace Streams\Exceptions;
 
-abstract class ThreadException extends \Exception
+abstract class ThreadException extends \Error
 {
     public function __toString()
     {
